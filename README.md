@@ -1,1 +1,1 @@
-# zig_riscv
+# Simple RISC-V emulator in Zig
