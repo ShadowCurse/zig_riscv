@@ -91,76 +91,162 @@ const JType = packed struct {
     }
 };
 
-fn run_instruction(cpu: *Cpu, intruction: u32) void {
-    var opcode = intruction & 0b1111111;
+fn run_instruction(cpu: *Cpu, instruction: u32) void {
+    var opcode = instruction & 0b1111111;
     std.log.info("opcode: {b}", .{opcode});
     switch (opcode) {
         // RV32I Base Instruction Set
         //LUI
         0b0110111 => {
-            const u_type = @bitCast(UType, intruction);
-            cpu.regs[u_type.rd] = @as(u32, u_type.get_imm());
+            const u_type = @bitCast(UType, instruction);
+            std.log.info("imm: {b}", .{u_type.imm});
+            std.log.info("var: {b}", .{u_type.get_imm()});
+            cpu.regs[u_type.rd] = @bitCast(u32, u_type.get_imm());
         },
-        else => {},
-        //
-        // 0b0010111 => {}, //AUIPC
-        //
-        // 0b1101111 => {}, //JAL
-        //
-        // 0b1100111 => {}, //JALR
-        //
-        // 0b1100011 => {}, //BEQ
-        // 0b1100011 => {}, //BNE
-        // 0b1100011 => {}, //BLT
-        // 0b1100011 => {}, //BGE
-        // 0b1100011 => {}, //BLTU
-        // 0b1100011 => {}, //BGEU
-        //
-        // 0b0000011 => {}, //LB
-        // 0b0000011 => {}, //LH
-        // 0b0000011 => {}, //LW
-        // 0b0000011 => {}, //LBU
-        // 0b0000011 => {}, //LHU
-        //
-        // 0b0100011 => {}, //SB
-        // 0b0100011 => {}, //SH
-        // 0b0100011 => {}, //SW
-        //
-        // 0b0010011 => {}, //ADDI
-        // 0b0010011 => {}, //SLTI
-        // 0b0010011 => {}, //SLTIU
-        // 0b0010011 => {}, //XORI
-        // 0b0010011 => {}, //ORI
-        // 0b0010011 => {}, //ANDI
-        // 0b0010011 => {}, //SLLI
-        // 0b0010011 => {}, //SRLI
-        // 0b0010011 => {}, //SRAI
-        //
-        // 0b0110011 => {}, //ADD
-        // 0b0110011 => {}, //SUB
-        // 0b0110011 => {}, //SLL
-        // 0b0110011 => {}, //SLT
-        // 0b0110011 => {}, //SLTU
-        // 0b0110011 => {}, //XOR
-        // 0b0110011 => {}, //SRL
-        // 0b0110011 => {}, //SRA
-        // 0b0110011 => {}, //OR
-        // 0b0110011 => {}, //AND
-        //
-        // 0b0001111 => {}, //FENCE
-        //
-        // 0b1110011 => {}, //ECALL
-        // 0b1110011 => {}, //EBREAK
-        //
-        // // RV32M Standard Extension
-        // 0b0110011 => {}, //MUL
-        // 0b0110011 => {}, //MULH
-        // 0b0110011 => {}, //MULHSU
-        // 0b0110011 => {}, //MULHU
-        // 0b0110011 => {}, //DIV
-        // 0b0110011 => {}, //DIVU
-        // 0b0110011 => {}, //REM
-        // 0b0110011 => {}, //REMU
+        //AUIPC
+        0b0010111 => {},
+        //JAL
+        0b1101111 => {},
+        //JALR
+        0b1100111 => {},
+        0b1100011 => {
+            const b_type = @bitCast(BType, instruction);
+            switch (b_type.func3) {
+                //BEQ
+                0b000 => {},
+                //BNE
+                0b001 => {},
+                //BLT
+                0b100 => {},
+                //BGE
+                0b101 => {},
+                //BLTU
+                0b110 => {},
+                //BGEU
+                0b111 => {},
+                else => unreachable,
+            }
+        },
+
+        0b0000011 => {
+            const i_type = @bitCast(IType, instruction);
+            switch (i_type.func3) {
+                //LB
+                0b000 => {},
+                //LH
+                0b001 => {},
+                //LW
+                0b010 => {},
+                //LBU
+                0b100 => {},
+                //LHU
+                0b101 => {},
+                else => unreachable,
+            }
+        },
+        0b0100011 => {
+            const s_type = @bitCast(SType, instruction);
+            switch (s_type.func3) {
+                //SB
+                0b000 => {},
+                //SH
+                0b001 => {},
+                //SW
+                0b010 => {},
+                else => unreachable,
+            }
+        },
+        0b0010011 => {
+            const i_type = @bitCast(IType, instruction);
+            switch (i_type.func3) {
+                //ADDI
+                0b000 => {},
+                //SLTI
+                0b010 => {},
+                //SLTIU
+                0b011 => {},
+                //XORI
+                0b100 => {},
+                //ORI
+                0b110 => {},
+                //ANDI
+                0b111 => {},
+                // 0b001=> {}, //SLLI
+                // 0b101 => {}, //SRLI
+                // 0b101 => {}, //SRAI
+                else => unreachable,
+            }
+        },
+        0b0110011 => {
+            const r_type = @bitCast(RType, instruction);
+            switch (r_type.func7) {
+                // Base set
+                0b0000000 => {
+                    switch (r_type.func3) {
+                        //ADD
+                        0b000 => {},
+                        //SLL
+                        0b001 => {},
+                        //SLT
+                        0b010 => {},
+                        //SLTU
+                        0b011 => {},
+                        //XOR
+                        0b100 => {},
+                        //SRL
+                        0b101 => {},
+                        //OR
+                        0b110 => {},
+                        //AND
+                        0b111 => {},
+                    }
+                },
+                0b0100000 => {
+                    switch (r_type.func3) {
+                        // SUB
+                        0b000 => {},
+                        // SRA
+                        0b101 => {},
+                        else => unreachable,
+                    }
+                },
+                // RV32M Standard Extension
+                0b0000001 => {
+                    switch (r_type.func3) {
+                        //MUL
+                        0b000 => {},
+                        //MULH
+                        0b001 => {},
+                        //MULHSU
+                        0b010 => {},
+                        //MULHU
+                        0b011 => {},
+                        //DIV
+                        0b100 => {},
+                        //DIVU
+                        0b101 => {},
+                        //REM
+                        0b110 => {},
+                        //REMU
+                        0b111 => {},
+                    }
+                },
+                else => unreachable,
+            }
+        },
+        //FENCE
+        0b0001111 => {},
+        0b1110011 => {
+            const i_type = @bitCast(IType, instruction);
+            switch (i_type.get_imm()) {
+                //ECALL
+                0b000000000000 => {},
+                //EBREAK
+                0b000000000001 => {},
+                else => unreachable,
+            }
+        },
+        else => unreachable,
     }
 }
 
@@ -174,7 +260,7 @@ pub fn main() !void {
 
     std.log.info("before regs[0]: {}", .{cpu.regs[0]});
 
-    const instruction: u32 = 0b00000000000000000011000000110111;
+    const instruction: u32 = 0b00000000000000000011_00000_0110111;
 
     run_instruction(&cpu, instruction);
 
