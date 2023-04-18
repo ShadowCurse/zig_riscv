@@ -160,21 +160,61 @@ fn run_instruction(cpu: *Cpu, instruction: u32) void {
             const i_type = @bitCast(IType, instruction);
             switch (i_type.func3) {
                 //ADDI
-                0b000 => {},
+                0b000 => {
+                    // Also NOP
+                    // NOP = ADDI x0, x0, 0.
+                    const op = @addWithOverflow(cpu.regs[i_type.rs1], @intCast(u32, i_type.get_imm()));
+                    cpu.regs[i_type.rd] += op.@"0";
+                },
                 //SLTI
-                0b010 => {},
+                0b010 => {
+                    if (@intCast(i32, cpu.regs[i_type.rs1]) < i_type.get_imm()) {
+                        cpu.regs[i_type.rd] = 1;
+                    } else {
+                        cpu.regs[i_type.rd] = 0;
+                    }
+                },
                 //SLTIU
-                0b011 => {},
+                0b011 => {
+                    if (@as(u32, cpu.regs[i_type.rs1]) < @intCast(u32, i_type.get_imm())) {
+                        cpu.regs[i_type.rd] = 1;
+                    } else {
+                        cpu.regs[i_type.rd] = 0;
+                    }
+                },
                 //XORI
-                0b100 => {},
+                0b100 => {
+                    cpu.regs[i_type.rd] = cpu.regs[i_type.rs1] ^ @intCast(u32, i_type.get_imm());
+                },
                 //ORI
-                0b110 => {},
+                0b110 => {
+                    cpu.regs[i_type.rd] = cpu.regs[i_type.rs1] | @intCast(u32, i_type.get_imm());
+                },
                 //ANDI
-                0b111 => {},
-                // 0b001=> {}, //SLLI
-                // 0b101 => {}, //SRLI
-                // 0b101 => {}, //SRAI
-                else => unreachable,
+                0b111 => {
+                    cpu.regs[i_type.rd] = cpu.regs[i_type.rs1] & @intCast(u32, i_type.get_imm());
+                },
+                //SLLI
+                0b001 => {
+                    cpu.regs[i_type.rd] = 1; //cpu.regs[i_type.rs1] << i_type.get_imm();//@as(u32, @intCast(u32, i_type.get_imm()) & @as(u32, 0b11111));
+                },
+                0b101 => {
+                    const r_type = @bitCast(RType, instruction);
+                    switch (r_type.func7) {
+                        //SRLI
+                        0b0000000 => {
+                            const shift = i_type.get_imm() & 0b11111;
+                            cpu.regs[i_type.rd] = std.math.shl(u32, cpu.regs[i_type.rs1], shift);
+                        },
+                        //SRAI
+                        0b0100000 => {
+                            const shift = i_type.get_imm() & 0b11111;
+                            cpu.regs[i_type.rd] = std.math.shl(u32, cpu.regs[i_type.rs1], shift);
+                        },
+                        else => unreachable,
+                    }
+                },
+                // else => unreachable,
             }
         },
         0b0110011 => {
@@ -184,29 +224,61 @@ fn run_instruction(cpu: *Cpu, instruction: u32) void {
                 0b0000000 => {
                     switch (r_type.func3) {
                         //ADD
-                        0b000 => {},
+                        0b000 => {
+                            const op = @addWithOverflow(cpu.regs[r_type.rs1], cpu.regs[r_type.rs2]);
+                            cpu.regs[r_type.rd] = op.@"0";
+                        },
                         //SLL
-                        0b001 => {},
+                        0b001 => {
+                            const shift = cpu.regs[r_type.rs2] & 0b11111;
+                            cpu.regs[r_type.rd] = std.math.shl(u32, cpu.regs[r_type.rs1], shift);
+                        },
                         //SLT
-                        0b010 => {},
+                        0b010 => {
+                            if (@intCast(i32, cpu.regs[r_type.rs1]) < @intCast(i32, cpu.regs[r_type.rs2])) {
+                                cpu.regs[r_type.rd] = 1;
+                            } else {
+                                cpu.regs[r_type.rd] = 0;
+                            }
+                        },
                         //SLTU
-                        0b011 => {},
+                        0b011 => {
+                            if (cpu.regs[r_type.rs1] < cpu.regs[r_type.rs2]) {
+                                cpu.regs[r_type.rd] = 1;
+                            } else {
+                                cpu.regs[r_type.rd] = 0;
+                            }
+                        },
                         //XOR
-                        0b100 => {},
-                        //SRL
-                        0b101 => {},
+                        0b100 => {
+                            cpu.regs[r_type.rd] = cpu.regs[r_type.rs1] ^ cpu.regs[r_type.rs2];
+                        },
                         //OR
-                        0b110 => {},
+                        0b110 => {
+                            cpu.regs[r_type.rd] = cpu.regs[r_type.rs1] | cpu.regs[r_type.rs2];
+                        },
                         //AND
-                        0b111 => {},
+                        0b111 => {
+                            cpu.regs[r_type.rd] = cpu.regs[r_type.rs1] & cpu.regs[r_type.rs2];
+                        },
+                        //SRL
+                        0b101 => {
+                            const shift = cpu.regs[r_type.rs2] & 0b11111;
+                            cpu.regs[r_type.rd] = std.math.shr(u32, cpu.regs[r_type.rs1], shift);
+                        },
                     }
                 },
                 0b0100000 => {
                     switch (r_type.func3) {
                         // SUB
-                        0b000 => {},
+                        0b000 => {
+                            const op = @subWithOverflow(cpu.regs[r_type.rs1], cpu.regs[r_type.rs2]);
+                            cpu.regs[r_type.rd] = op.@"0";
+                        },
                         // SRA
-                        0b101 => {},
+                        0b101 => {
+                            cpu.regs[r_type.rd] = cpu.regs[r_type.rs1] >> r_type.rs2 & 0b11111;
+                        },
                         else => unreachable,
                     }
                 },
@@ -258,9 +330,13 @@ pub fn main() !void {
 
     std.mem.set(u32, &cpu.regs, 0);
 
+    cpu.regs[0] = 1;
+    cpu.regs[1] = 10;
+
     std.log.info("before regs[0]: {}", .{cpu.regs[0]});
 
-    const instruction: u32 = 0b00000000000000000011_00000_0110111;
+    // const instruction: u32 = 0b00000000000000000011_00000_0110111;
+    const instruction: u32 = 0b0000000_00000_00001_000_00000_0110011;
 
     run_instruction(&cpu, instruction);
 
