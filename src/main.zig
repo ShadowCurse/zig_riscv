@@ -20,24 +20,58 @@ fn run_instruction(cpu: *Cpu, instruction: u32) void {
         //AUIPC
         0b0010111 => {},
         //JAL
-        0b1101111 => {},
+        0b1101111 => {
+            const j_type = @bitCast(Encodings.JType, instruction);
+            cpu.regs[j_type.rd] = cpu.pc + 4;
+            cpu.pc = @intCast(u32, @intCast(i32, cpu.pc) +% j_type.get_imm());
+        },
         //JALR
-        0b1100111 => {},
+        0b1100111 => {
+            const i_type = @bitCast(Encodings.IType, instruction);
+            cpu.regs[i_type.rd] = cpu.pc + 4;
+            cpu.pc = @intCast(u32, @intCast(i32, cpu.regs[i_type.rs1]) +% i_type.get_imm()) & 0xfffffffe;
+        },
         0b1100011 => {
             const b_type = @bitCast(Encodings.BType, instruction);
+            const a = cpu.regs[b_type.rs1];
+            const b = cpu.regs[b_type.rs2];
             switch (b_type.func3) {
                 //BEQ
-                0b000 => {},
+                0b000 => {
+                    if (a == b) {
+                        cpu.pc = cpu.pc +% @intCast(u32, b_type.get_imm());
+                    }
+                },
                 //BNE
-                0b001 => {},
+                0b001 => {
+                    if (a != b) {
+                        cpu.pc = cpu.pc +% @intCast(u32, b_type.get_imm());
+                    }
+                },
                 //BLT
-                0b100 => {},
+                0b100 => {
+                    if (@intCast(i32, a) < @intCast(i32, b)) {
+                        cpu.pc = cpu.pc +% @intCast(u32, b_type.get_imm());
+                    }
+                },
                 //BGE
-                0b101 => {},
+                0b101 => {
+                    if (@intCast(i32, a) >= @intCast(i32, b)) {
+                        cpu.pc = cpu.pc +% @intCast(u32, b_type.get_imm());
+                    }
+                },
                 //BLTU
-                0b110 => {},
+                0b110 => {
+                    if (a < b) {
+                        cpu.pc = cpu.pc +% @intCast(u32, b_type.get_imm());
+                    }
+                },
                 //BGEU
-                0b111 => {},
+                0b111 => {
+                    if (a >= b) {
+                        cpu.pc = cpu.pc +% @intCast(u32, b_type.get_imm());
+                    }
+                },
                 else => unreachable,
             }
         },
