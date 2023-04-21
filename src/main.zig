@@ -18,7 +18,7 @@ const Ram = struct {
                     @as(u32, self.mem[index + 3]) << 24;
             },
             u16 => {
-                return self.mem[index] | self.mem[index + 1] << 8;
+                return @as(u16, self.mem[index]) | @as(u16, self.mem[index + 1]) << 8;
             },
             u8 => {
                 return self.mem[index];
@@ -31,14 +31,14 @@ const Ram = struct {
         const index = addr - self.base_addr;
         switch (t) {
             u32 => {
-                self.mem[index] = value & 0xff;
-                self.mem[index + 1] = (value >> 8) & 0xff;
-                self.mem[index + 2] = (value >> 16) & 0xff;
-                self.mem[index + 3] = (value >> 24) & 0xff;
+                self.mem[index] = @truncate(u8, value);
+                self.mem[index + 1] = @truncate(u8, (value >> 8));
+                self.mem[index + 2] = @truncate(u8, (value >> 16));
+                self.mem[index + 3] = @truncate(u8, (value >> 24));
             },
             u16 => {
-                self.mem[index] = value & 0xff;
-                self.mem[index + 1] = (value >> 8) & 0xff;
+                self.mem[index] = @truncate(u8, value & 0xff);
+                self.mem[index + 1] = @truncate(u8, (value >> 8) & 0xff);
             },
             u8 => {
                 self.mem[index] = value;
@@ -79,7 +79,6 @@ const Cpu = struct {
             0b1101111 => {
                 const j_type = @bitCast(Encodings.JType, instruction);
                 std.log.info("JAL: {any}", .{j_type});
-                std.log.info("JAL: {}", .{j_type.get_imm()});
                 self.regs[j_type.rd] = self.pc + 4;
                 self.pc = @intCast(u32, @intCast(i32, self.pc) +% j_type.get_imm());
             },
@@ -143,29 +142,58 @@ const Cpu = struct {
 
             0b0000011 => {
                 const i_type = @bitCast(Encodings.IType, instruction);
+                const addr = self.regs[i_type.rs1] + @bitCast(u32, i_type.get_imm());
                 switch (i_type.func3) {
                     //LB
-                    0b000 => {},
+                    0b000 => {
+                        std.log.info("LB: {any}", .{i_type});
+                        self.regs[i_type.rd] = @bitCast(u32, @as(i32, @bitCast(i8, self.ram.read(u8, addr))));
+                    },
                     //LH
-                    0b001 => {},
+                    0b001 => {
+                        std.log.info("LH: {any}", .{i_type});
+                        self.regs[i_type.rd] = @bitCast(u32, @as(i32, @bitCast(i16, self.ram.read(u16, addr))));
+                    },
                     //LW
-                    0b010 => {},
+                    0b010 => {
+                        std.log.info("LW: {any}", .{i_type});
+                        self.regs[i_type.rd] = self.ram.read(u32, addr);
+                    },
                     //LBU
-                    0b100 => {},
+                    0b100 => {
+                        std.log.info("LBU: {any}", .{i_type});
+                        self.regs[i_type.rd] = @as(u32, self.ram.read(u8, addr));
+                    },
                     //LHU
-                    0b101 => {},
+                    0b101 => {
+                        std.log.info("LHU: {any}", .{i_type});
+                        self.regs[i_type.rd] = @as(u32, self.ram.read(u16, addr));
+                    },
                     else => unreachable,
                 }
             },
             0b0100011 => {
                 const s_type = @bitCast(Encodings.SType, instruction);
+                const addr = self.regs[s_type.rs1] + @bitCast(u32, s_type.get_imm());
                 switch (s_type.func3) {
                     //SB
-                    0b000 => {},
+                    0b000 => {
+                        std.log.info("SB: {any}", .{s_type});
+                        const data = self.regs[s_type.rs2];
+                        self.ram.write(u8, addr, @truncate(u8, data));
+                    },
                     //SH
-                    0b001 => {},
+                    0b001 => {
+                        std.log.info("SH: {any}", .{s_type});
+                        const data = self.regs[s_type.rs2];
+                        self.ram.write(u16, addr, @truncate(u16, data));
+                    },
                     //SW
-                    0b010 => {},
+                    0b010 => {
+                        std.log.info("SW: {any}", .{s_type});
+                        const data = self.regs[s_type.rs2];
+                        self.ram.write(u32, addr, data);
+                    },
                     else => unreachable,
                 }
             },
