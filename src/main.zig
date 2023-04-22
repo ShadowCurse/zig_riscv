@@ -55,6 +55,13 @@ const Cpu = struct {
 
     const Self = @This();
 
+    fn print_regs(self: *Self) void {
+        for (self.regs, 0..) |reg, i| {
+            std.log.info("reg[{}]: u32({}), i32({})", .{ i, reg, @bitCast(i32, reg) });
+        }
+        std.log.info("pc: {x}", .{self.pc});
+    }
+
     fn fetch_next_intruction(self: *Self) u32 {
         return self.ram.read(u32, self.pc);
     }
@@ -413,6 +420,7 @@ pub fn main() !void {
     for (0..5) |_| {
         const intsruction = cpu.fetch_next_intruction();
         std.log.info("{x}", .{intsruction});
+        cpu.print_regs();
         cpu.run_instruction();
     }
 }
