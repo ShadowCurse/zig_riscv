@@ -68,7 +68,7 @@ const Cpu = struct {
 
     fn run_instruction(self: *Self) void {
         const instruction = self.fetch_next_intruction();
-        self.pc += 4;
+        var next_pc = self.pc + 4;
 
         var opcode = instruction & 0b1111111;
         std.log.info("opcode: {b}", .{opcode});
@@ -87,14 +87,14 @@ const Cpu = struct {
                 const j_type = @bitCast(Encodings.JType, instruction);
                 std.log.info("JAL: {any}", .{j_type});
                 self.regs[j_type.rd] = self.pc + 4;
-                self.pc = @intCast(u32, @intCast(i32, self.pc) +% j_type.get_imm());
+                next_pc = @intCast(u32, @intCast(i32, self.pc) +% j_type.get_imm());
             },
             //JALR
             0b1100111 => {
                 const i_type = @bitCast(Encodings.IType, instruction);
                 std.log.info("JALR: {any}", .{i_type});
                 self.regs[i_type.rd] = self.pc + 4;
-                self.pc = @intCast(u32, @intCast(i32, self.regs[i_type.rs1]) +% i_type.get_imm()) & 0xfffffffe;
+                next_pc = @intCast(u32, @intCast(i32, self.regs[i_type.rs1]) +% i_type.get_imm()) & 0xfffffffe;
             },
             0b1100011 => {
                 const b_type = @bitCast(Encodings.BType, instruction);
@@ -104,43 +104,44 @@ const Cpu = struct {
                     //BEQ
                     0b000 => {
                         std.log.info("BEQ: {any}", .{b_type});
+                        std.log.info("BEQ: {}", .{b_type.get_imm()});
                         if (a == b) {
-                            self.pc = self.pc +% @intCast(u32, b_type.get_imm());
+                            next_pc = @intCast(u32, @as(i64, self.pc) +% @as(i64, b_type.get_imm()));
                         }
                     },
                     //BNE
                     0b001 => {
                         std.log.info("BNE: {any}", .{b_type});
                         if (a != b) {
-                            self.pc = self.pc +% @intCast(u32, b_type.get_imm());
+                            next_pc = self.pc +% @intCast(u32, b_type.get_imm());
                         }
                     },
                     //BLT
                     0b100 => {
                         std.log.info("BLT: {any}", .{b_type});
                         if (@intCast(i32, a) < @intCast(i32, b)) {
-                            self.pc = self.pc +% @intCast(u32, b_type.get_imm());
+                            next_pc = self.pc +% @intCast(u32, b_type.get_imm());
                         }
                     },
                     //BGE
                     0b101 => {
                         std.log.info("BGE: {any}", .{b_type});
                         if (@intCast(i32, a) >= @intCast(i32, b)) {
-                            self.pc = self.pc +% @intCast(u32, b_type.get_imm());
+                            next_pc = self.pc +% @intCast(u32, b_type.get_imm());
                         }
                     },
                     //BLTU
                     0b110 => {
                         std.log.info("BLTU: {any}", .{b_type});
                         if (a < b) {
-                            self.pc = self.pc +% @intCast(u32, b_type.get_imm());
+                            next_pc = self.pc +% @intCast(u32, b_type.get_imm());
                         }
                     },
                     //BGEU
                     0b111 => {
                         std.log.info("BGEU: {any}", .{b_type});
                         if (a >= b) {
-                            self.pc = self.pc +% @intCast(u32, b_type.get_imm());
+                            next_pc = self.pc +% @intCast(u32, b_type.get_imm());
                         }
                     },
                     else => unreachable,
@@ -444,6 +445,7 @@ const Cpu = struct {
             },
             else => unreachable,
         }
+        self.pc = next_pc;
     }
 };
 
