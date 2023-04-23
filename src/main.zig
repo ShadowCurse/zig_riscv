@@ -351,21 +351,80 @@ const Cpu = struct {
                     0b0000001 => {
                         switch (r_type.func3) {
                             //MUL
-                            0b000 => {},
+                            0b000 => {
+                                std.log.info("MUL: {any}", .{r_type});
+                                self.regs[r_type.rd] = self.regs[r_type.rs1] *% self.regs[r_type.rs2];
+                            },
                             //MULH
-                            0b001 => {},
+                            0b001 => {
+                                std.log.info("MULH: {any}", .{r_type});
+                                const a = @as(i64, @bitCast(i32, self.regs[r_type.rs1]));
+                                const b = @as(i64, @bitCast(i32, self.regs[r_type.rs2]));
+                                const res = @bitCast(u64, a *% b);
+                                self.regs[r_type.rd] = @truncate(u32, res >> 32);
+                            },
                             //MULHSU
-                            0b010 => {},
+                            0b010 => {
+                                std.log.info("MULHSU: {any}", .{r_type});
+                                const a = @as(i64, @bitCast(i32, self.regs[r_type.rs1]));
+                                const b = @as(i64, @bitCast(i32, self.regs[r_type.rs2]));
+                                const res = @bitCast(u64, a *% b);
+                                self.regs[r_type.rd] = @truncate(u32, res >> 32);
+                            },
                             //MULHU
-                            0b011 => {},
+                            0b011 => {
+                                std.log.info("MULHU: {any}", .{r_type});
+                                const a = @as(u64, self.regs[r_type.rs1]);
+                                const b = @as(u64, self.regs[r_type.rs2]);
+                                const res = @bitCast(u64, a *% b);
+                                self.regs[r_type.rd] = @truncate(u32, res >> 32);
+                            },
                             //DIV
-                            0b100 => {},
+                            0b100 => {
+                                std.log.info("DIV: {any}", .{r_type});
+                                const a = @bitCast(i32, self.regs[r_type.rs1]);
+                                const b = @bitCast(i32, self.regs[r_type.rs2]);
+                                if (b == 0) {
+                                    self.regs[r_type.rd] = std.math.maxInt(u32);
+                                } else {
+                                    const res = @bitCast(u32, @divTrunc(a, b));
+                                    self.regs[r_type.rd] = res;
+                                }
+                            },
                             //DIVU
-                            0b101 => {},
+                            0b101 => {
+                                std.log.info("DIVU: {any}", .{r_type});
+                                const a = self.regs[r_type.rs1];
+                                const b = self.regs[r_type.rs2];
+                                if (b == 0) {
+                                    self.regs[r_type.rd] = std.math.maxInt(u32);
+                                } else {
+                                    self.regs[r_type.rd] = a / b;
+                                }
+                            },
                             //REM
-                            0b110 => {},
+                            0b110 => {
+                                std.log.info("REM: {any}", .{r_type});
+                                const a = @bitCast(i32, self.regs[r_type.rs1]);
+                                const b = @bitCast(i32, self.regs[r_type.rs2]);
+                                if (b == 0) {
+                                    self.regs[r_type.rd] = @bitCast(u32, a);
+                                } else {
+                                    const res = @bitCast(u32, @rem(a, b));
+                                    self.regs[r_type.rd] = res;
+                                }
+                            },
                             //REMU
-                            0b111 => {},
+                            0b111 => {
+                                std.log.info("REMU: {any}", .{r_type});
+                                const a = self.regs[r_type.rs1];
+                                const b = self.regs[r_type.rs2];
+                                if (b == 0) {
+                                    self.regs[r_type.rd] = a;
+                                } else {
+                                    self.regs[r_type.rd] = a % b;
+                                }
+                            },
                         }
                     },
                     else => unreachable,
