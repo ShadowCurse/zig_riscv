@@ -182,7 +182,7 @@ const Cpu = struct {
             },
             0b0100011 => {
                 const s_type = @bitCast(Encodings.SType, instruction);
-                const addr = self.regs[s_type.rs1] + @bitCast(u32, s_type.get_imm());
+                const addr = @intCast(u32, @intCast(i64, self.regs[s_type.rs1]) + s_type.get_imm());
                 switch (s_type.func3) {
                     //SB
                     0b000 => {
