@@ -75,19 +75,22 @@ pub const JType = packed struct {
 
     const Self = @This();
     pub fn get_imm(self: *const Self) i32 {
-        const sign = @as(i21, self.imm & 0b10000000000000000000);
-        const p_20 = @as(i21, self.imm & 0b01000000000000000000);
-        const p_10_1 = @as(i21, self.imm & 0b00111111111100000000);
-        const p_11 = @as(i21, self.imm & 0b00000000000010000000);
-        const p_19_12 = @as(i21, self.imm & 0b00000000000001111111);
+        const sign = @as(i21, self.imm & 0b10000000000000000000) << 2;
+        const p_20 = @as(i21, self.imm & 0b10000000000000000000) << 1;
+        const p_10_1 = @as(i21, self.imm & 0b01111111111000000000) >> 8;
+        const p_11 = @as(i21, self.imm & 0b00000000000100000000) << 3;
+        const p_19_12 = @as(i21, self.imm & 0b00000000000011111111) << 12;
 
-        std.log.info("{b:0>25} : sign", .{sign});
-        std.log.info("{b:0>25} : p_20", .{p_20});
-        std.log.info("{b:0>25} : p_10_1", .{p_10_1});
-        std.log.info("{b:0>25} : p_11", .{p_11});
-        std.log.info("{b:0>25} : p_19_12", .{p_19_12});
+        // std.debug.print("\n{b:0>25} : sign\n", .{sign});
+        // std.debug.print("{b:0>25} : p_20\n", .{p_20});
+        // std.debug.print("{b:0>25} : p_10_1\n", .{p_10_1});
+        // std.debug.print("{b:0>25} : p_11\n", .{p_11});
+        // std.debug.print("{b:0>25} : p_19_12\n", .{p_19_12});
+        //
+        // const res = @as(i32, sign | p_20 | p_19_12 | p_11 | p_10_1);
+        // std.debug.print("res: {x}\n", .{res});
 
-        return @as(i32, (sign | p_20 | p_19_12 | p_11 | p_10_1) << 1);
+        return @as(i32, sign | p_20 | p_19_12 | p_11 | p_10_1);
     }
 };
 
@@ -258,5 +261,13 @@ test "JType" {
         try expect(j_type.opcode == 0b1101111);
         try expect(j_type.rd == 13);
         try expect(j_type.get_imm() == -2);
+    }
+
+    {
+        const j_instruction: u32 = 0x0200006f;
+        const j_type = @bitCast(JType, j_instruction);
+        try expect(j_type.opcode == 0b1101111);
+        try expect(j_type.rd == 0);
+        try expect(j_type.get_imm() == 32);
     }
 }
