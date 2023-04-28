@@ -9,6 +9,7 @@ const Ram = struct {
     const Self = @This();
 
     fn read(self: *Self, comptime t: type, addr: u32) t {
+        std.log.info("mem read addr: {x}", .{addr});
         const index = addr - self.base_addr;
         switch (t) {
             u32 => {
@@ -28,6 +29,7 @@ const Ram = struct {
     }
 
     fn write(self: *Self, comptime t: type, addr: u32, value: t) void {
+        std.log.info("mem write addr: {x}", .{addr});
         const index = addr - self.base_addr;
         switch (t) {
             u32 => {
@@ -66,8 +68,200 @@ const Cpu = struct {
         return self.ram.read(u32, self.pc);
     }
 
-    fn run_instruction(self: *Self) void {
+    fn run_instruction(self: *Self) bool {
         const instruction = self.fetch_next_intruction();
+        const stop = switch (instruction & 0b11) {
+            0b00 => self.run_compressed_00(instruction),
+            0b01 => self.run_compressed_01(instruction),
+            0b10 => self.run_compressed_10(instruction),
+            0b11 => self.run_full(instruction),
+            else => unreachable(),
+        };
+        return stop;
+    }
+
+    fn run_compressed_00(self: *Self, instruction: u32) bool {
+        std.log.info("run_compressed_00", .{});
+        switch ((instruction & 0b1110000000000000) >> 13) {
+            // C.ADDI4SPN or ILLEGAL
+            0b000 => {
+                const ciw_type = @bitCast(Encodings.CIWType, @truncate(u16, instruction));
+                const p_5_4 = @as(u9, ciw_type.imm & 0b11000000) >> 2;
+                const p_9_6 = @as(u9, ciw_type.imm & 0b00111100) << 4;
+                const p_2 = @as(u9, ciw_type.imm & 0b00000010) << 1;
+                const p_3 = @as(u9, ciw_type.imm & 0b00000001) << 3;
+                const imm = @as(u32, p_9_6 | p_5_4 | p_3 | p_2);
+                std.log.info("ADDI4SPN: {any}", .{ciw_type});
+                self.regs[ciw_type.rd] = self.regs[2] + imm;
+            },
+            // C.FLD (RV32/RV64) only for D extension
+            0b001 => unreachable(),
+            // C.LW
+            0b010 => {
+                const cl_type = @bitCast(Encodings.CLType, @truncate(u16, instruction));
+                const p_2 = @as(u9, cl_type.imm1 & 0b10) << 1;
+                const p_6 = @as(u9, cl_type.imm1 & 0b01) << 6;
+                const p_5_3 = @as(u9, cl_type.imm2) << 3;
+                const imm = @as(u32, p_2 | p_5_3 | p_6);
+                std.log.info("LW: {any}", .{cl_type});
+                self.regs[cl_type.rd] = self.ram.read(u32, self.regs[cl_type.rs1] + imm);
+            },
+            // C.FLW (RV32)
+            0b011 => unreachable(),
+            // Reserved
+            0b100 => {},
+            // C.FSD (RV32/64)
+            0b101 => unreachable(),
+            // C.SW
+            0b110 => {
+                const cs_type = @bitCast(Encodings.CSType, @truncate(u16, instruction));
+                const p_2 = @as(u9, cs_type.imm1 & 0b10) << 1;
+                const p_6 = @as(u9, cs_type.imm1 & 0b01) << 6;
+                const p_5_3 = @as(u9, cs_type.imm2) << 3;
+                const imm = @as(u32, p_2 | p_5_3 | p_6);
+                std.log.info("SW: {any}", .{cs_type});
+                self.ram.write(u32, self.regs[cs_type.rs1] + imm, self.regs[cs_type.rs2]);
+            },
+            // C.FSW (RV32)
+            0b111 => unreachable(),
+            else => unreachable(),
+        }
+        return true;
+    }
+    fn run_compressed_01(self: *Self, original_instruction: u32) bool {
+        const instruction = @truncate(u16, original_instruction);
+        std.log.info("run_compressed_01: {x}", .{instruction});
+        switch ((instruction & 0b1110000000000000) >> 13) {
+            // C.NOP (HINT, nzimm != 0)
+            // C.ADDI (HINT, nzimm = 0)
+            0b000 => {
+                const ci_type = @bitCast(Encodings.CIType, instruction);
+                const imm = @as(i64, @as(i6, ci_type.imm1) | @as(i6, ci_type.imm2) << 5);
+                std.log.info("C.ADDI: {any}", .{ci_type});
+                self.regs[ci_type.rd] = @intCast(u32, @as(i64, self.regs[ci_type.rd]) + imm);
+            },
+            // C.JAL (RV32)
+            0b001 => {
+                const cj_type = @bitCast(Encodings.CJType, instruction);
+
+                // offset[11|4|9:8|10|6|7|3:1|5]
+                const sign = @as(u16, instruction & 0b1000000000000);
+                const p_11 = @as(u16, cj_type.imm & 0b10000000000) << 1;
+                const p_4 = @as(u16, cj_type.imm & 0b01000000000) >> 5;
+                const p_9_8 = @as(u16, cj_type.imm & 0b00110000000) << 1;
+                const p_10 = @as(u16, cj_type.imm & 0b00001000000) << 4;
+                const p_6 = @as(u16, cj_type.imm & 0b00000100000) << 1;
+                const p_7 = @as(u16, cj_type.imm & 0b00000010000) << 3;
+                const p_3_1 = @as(u16, cj_type.imm & 0b00000001110);
+                const p_5 = @as(u16, cj_type.imm & 0b00000000001) << 5;
+                const imm = @as(i64, @bitCast(i16, sign | p_11 | p_10 | p_9_8 | p_7 | p_6 | p_5 | p_4 | p_3_1));
+
+                std.log.info("C.JAL: {any}", .{cj_type});
+                self.regs[1] = self.pc + 2;
+                self.pc = @intCast(u32, @as(i64, self.pc) + imm);
+            },
+            // C.LI (HINT, rd=0)
+            0b010 => {
+                const ci_type = @bitCast(Encodings.CIType, instruction);
+                const imm = @as(i32, @as(i6, ci_type.imm1) | @as(i6, ci_type.imm2) << 5);
+                std.log.info("C.LI: {any}", .{ci_type});
+                self.regs[ci_type.rd] = @bitCast(u32, imm);
+            },
+            // C.ADDI16SP (RES, nzimm=0)
+            // C.LUI (RES, nzimm=0; HINT, rd=0)
+            0b011 => {
+                const ci_type = @bitCast(Encodings.CIType, instruction);
+                if (ci_type.rd == 2) {
+                    const sign = @bitCast(i12, @truncate(u12, instruction & 0b1000000000000));
+                    const p_9 = @as(i12, ci_type.imm2);
+                    const p_4 = @as(i12, ci_type.imm1 & 0b10000);
+                    const p_6 = @as(i12, ci_type.imm1 & 0b01000) << 2;
+                    const p_8_7 = @as(i12, ci_type.imm1 & 0b00110) << 5;
+                    const p_5 = @as(i12, ci_type.imm1 & 0b00001) << 5;
+                    const imm = @as(i64, sign | p_9 | p_8_7 | p_6 | p_5 | p_4);
+                    std.log.info("C.ADDI16SP: {any}", .{ci_type});
+                    self.regs[2] = @intCast(u32, @as(i64, self.regs[2]) + imm);
+                } else {
+                    const imm = @as(u32, @as(u6, ci_type.imm1) | @as(u6, ci_type.imm2) << 5) << 12;
+                    const val = (0 -% ci_type.imm2) & 0x000 & imm;
+                    std.log.info("C.LUI: {any}", .{ci_type});
+                    self.regs[ci_type.rd] = val;
+                }
+            },
+            // C.SRLI (RV32 NSE, nzuimm[5]=1)
+            // C.SRAI (RV32 NSE, nzuimm[5]=1)
+            // C.ANDI
+            // C.SUB
+            // C.XOR
+            // C.OR
+            // C.AND
+            // Reserved
+            // Reserved
+            0b100 => {
+                std.log.info("C.SRLI", .{});
+            },
+            // C.J
+            0b101 => {
+                const cj_type = @bitCast(Encodings.CJType, instruction);
+
+                // offset[11|4|9:8|10|6|7|3:1|5]
+                const sign = @truncate(u13, instruction & 0b1000000000000);
+                const p_11 = @as(u13, cj_type.imm & 0b10000000000) << 1;
+                const p_4 = @as(u13, cj_type.imm & 0b01000000000) >> 5;
+                const p_9_8 = @as(u13, cj_type.imm & 0b00110000000) << 1;
+                const p_10 = @as(u13, cj_type.imm & 0b00001000000) << 4;
+                const p_6 = @as(u13, cj_type.imm & 0b00000100000) << 1;
+                const p_7 = @as(u13, cj_type.imm & 0b00000010000) << 3;
+                const p_3_1 = @as(u13, cj_type.imm & 0b00000001110);
+                const p_5 = @as(u13, cj_type.imm & 0b00000000001) << 5;
+                const imm = @as(i64, @bitCast(i13, sign | p_11 | p_10 | p_9_8 | p_7 | p_6 | p_5 | p_4 | p_3_1));
+
+                std.log.info("C.J: {any}", .{cj_type});
+                self.pc = @intCast(u32, @as(i64, self.pc) + imm);
+            },
+            // C.BEQZ
+            0b110 => {
+                std.log.info("C.BEQZ", .{});
+            },
+            // C.BNEZ
+            0b111 => {
+                std.log.info("C.BNEZ", .{});
+            },
+            else => return true,
+        }
+        self.pc += 2;
+        return false;
+    }
+    fn run_compressed_10(self: *Self, instruction: u32) bool {
+        std.log.info("run_compressed_10", .{});
+        switch ((instruction & 0b1110000000000000) >> 13) {
+            // C.SLLI (HINT, rd=0; RV32 NSE, nzuimm[5]=1)
+            0b000 => {},
+            // C.FLDSP (RV32/64)
+            0b001 => {},
+            // C.LWSP (RES, rd=0
+            0b010 => {},
+            // C.FLWSP (RV32)
+            0b011 => {},
+            // C.JR (RES, rs1=0)
+            // C.MV (HINT, rd=0)
+            // C.EBREAK
+            // C.JALR
+            // C.ADD (HINT, rd=0)
+            0b100 => {},
+            // C.FSDSP (RV32/64)
+            0b101 => {},
+            // C.SWSP
+            0b110 => {},
+            // C.FSWSP (RV32)
+            0b111 => {},
+            else => unreachable(),
+        }
+        _ = self;
+        return true;
+    }
+
+    fn run_full(self: *Self, instruction: u32) bool {
         var next_pc = self.pc + 4;
 
         var opcode = instruction & 0b1111111;
@@ -81,20 +275,28 @@ const Cpu = struct {
                 self.regs[u_type.rd] = @intCast(u32, u_type.get_imm());
             },
             //AUIPC
-            0b0010111 => {},
+            0b0010111 => {
+                const u_type = @bitCast(Encodings.UType, instruction);
+                std.log.info("AUIPC: {any}", .{u_type});
+                self.regs[u_type.rd] = @intCast(u32, @as(i64, self.pc) +% @as(i64, u_type.get_imm()));
+            },
             //JAL
             0b1101111 => {
                 const j_type = @bitCast(Encodings.JType, instruction);
                 std.log.info("JAL: {any}", .{j_type});
+                next_pc = @intCast(u32, @as(i64, self.pc) +% @as(i64, j_type.get_imm()));
                 self.regs[j_type.rd] = self.pc + 4;
-                next_pc = @intCast(u32, @intCast(i32, self.pc) +% j_type.get_imm());
             },
             //JALR
             0b1100111 => {
                 const i_type = @bitCast(Encodings.IType, instruction);
                 std.log.info("JALR: {any}", .{i_type});
+                // std.log.info("rs1: {}", .{self.regs[i_type.rs1]});
+                // std.log.info("imm: {}", .{i_type.get_imm()});
+                std.log.info("JARL before: {}", .{next_pc});
+                next_pc = @intCast(u32, @intCast(i64, self.regs[i_type.rs1]) +% @as(i64, i_type.get_imm())) & 0xfffffffe;
                 self.regs[i_type.rd] = self.pc + 4;
-                next_pc = @intCast(u32, @intCast(i32, self.regs[i_type.rs1]) +% i_type.get_imm()) & 0xfffffffe;
+                std.log.info("JARL next_pc: {}", .{next_pc});
             },
             0b1100011 => {
                 const b_type = @bitCast(Encodings.BType, instruction);
@@ -113,41 +315,40 @@ const Cpu = struct {
                     0b001 => {
                         std.log.info("BNE: {any}", .{b_type});
                         if (a != b) {
-                            next_pc = self.pc +% @intCast(u32, b_type.get_imm());
+                            next_pc = @intCast(u32, @as(i64, self.pc) +% @as(i64, b_type.get_imm()));
                         }
                     },
                     //BLT
                     0b100 => {
                         std.log.info("BLT: {any}", .{b_type});
-                        if (@intCast(i32, a) < @intCast(i32, b)) {
-                            next_pc = self.pc +% @intCast(u32, b_type.get_imm());
+                        if (@intCast(i64, a) < @intCast(i64, b)) {
+                            next_pc = @intCast(u32, @as(i64, self.pc) +% @as(i64, b_type.get_imm()));
                         }
                     },
                     //BGE
                     0b101 => {
                         std.log.info("BGE: {any}", .{b_type});
-                        if (@intCast(i32, a) >= @intCast(i32, b)) {
-                            next_pc = self.pc +% @intCast(u32, b_type.get_imm());
+                        if (@intCast(i64, a) >= @intCast(i64, b)) {
+                            next_pc = @intCast(u32, @as(i64, self.pc) +% @as(i64, b_type.get_imm()));
                         }
                     },
                     //BLTU
                     0b110 => {
                         std.log.info("BLTU: {any}", .{b_type});
                         if (a < b) {
-                            next_pc = self.pc +% @intCast(u32, b_type.get_imm());
+                            next_pc = @intCast(u32, @as(i64, self.pc) +% @as(i64, b_type.get_imm()));
                         }
                     },
                     //BGEU
                     0b111 => {
                         std.log.info("BGEU: {any}", .{b_type});
                         if (a >= b) {
-                            next_pc = self.pc +% @intCast(u32, b_type.get_imm());
+                            next_pc = @intCast(u32, @as(i64, self.pc) +% @as(i64, b_type.get_imm()));
                         }
                     },
                     else => unreachable,
                 }
             },
-
             0b0000011 => {
                 const i_type = @bitCast(Encodings.IType, instruction);
                 const addr = self.regs[i_type.rs1] + @bitCast(u32, i_type.get_imm());
@@ -213,12 +414,12 @@ const Cpu = struct {
                         std.log.info("ADDI: {any}", .{i_type});
                         // Also NOP
                         // NOP = ADDI x0, x0, 0.
-                        self.regs[i_type.rd] = @bitCast(u32, @intCast(i32, self.regs[i_type.rs1]) +% i_type.get_imm());
+                        self.regs[i_type.rd] = @bitCast(u32, @bitCast(i32, self.regs[i_type.rs1]) +% i_type.get_imm());
                     },
                     //SLTI
                     0b010 => {
                         std.log.info("SLTI: {any}", .{i_type});
-                        if (@intCast(i32, self.regs[i_type.rs1]) < i_type.get_imm()) {
+                        if (@as(i64, self.regs[i_type.rs1]) < @as(i64, i_type.get_imm())) {
                             self.regs[i_type.rd] = 1;
                         } else {
                             self.regs[i_type.rd] = 0;
@@ -236,17 +437,17 @@ const Cpu = struct {
                     //XORI
                     0b100 => {
                         std.log.info("XORI: {any}", .{i_type});
-                        self.regs[i_type.rd] = self.regs[i_type.rs1] ^ @intCast(u32, i_type.get_imm());
+                        self.regs[i_type.rd] = self.regs[i_type.rs1] ^ @bitCast(u32, i_type.get_imm());
                     },
                     //ORI
                     0b110 => {
                         std.log.info("ORI: {any}", .{i_type});
-                        self.regs[i_type.rd] = self.regs[i_type.rs1] | @intCast(u32, i_type.get_imm());
+                        self.regs[i_type.rd] = self.regs[i_type.rs1] | @bitCast(u32, i_type.get_imm());
                     },
                     //ANDI
                     0b111 => {
                         std.log.info("ANDI: {any}", .{i_type});
-                        self.regs[i_type.rd] = self.regs[i_type.rs1] & @intCast(u32, i_type.get_imm());
+                        self.regs[i_type.rd] = self.regs[i_type.rs1] & @bitCast(u32, i_type.get_imm());
                     },
                     //SLLI
                     0b001 => {
@@ -443,9 +644,10 @@ const Cpu = struct {
                     else => unreachable,
                 }
             },
-            else => unreachable,
+            else => return true,
         }
         self.pc = next_pc;
+        return false;
     }
 };
 
@@ -473,15 +675,18 @@ pub fn main() !void {
 
     var cpu = Cpu{
         .regs = undefined,
-        .pc = 0x110bc,
+        .pc = 0x110b4,
         .ram = ram,
     };
     std.mem.set(u32, &cpu.regs, 0);
 
-    for (0..5) |_| {
+    cpu.regs[2] = 0x110fc + @intCast(u32, code.len + 1000);
+
+    var stop: bool = false;
+    while (!stop) {
         const intsruction = cpu.fetch_next_intruction();
-        std.log.info("{x}", .{intsruction});
+        std.log.info("instruction: {x}", .{intsruction});
         cpu.print_regs();
-        cpu.run_instruction();
+        stop = cpu.run_instruction();
     }
 }
