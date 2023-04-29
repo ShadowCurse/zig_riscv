@@ -188,16 +188,46 @@ const Cpu = struct {
                     self.regs[ci_type.rd] = val;
                 }
             },
-            // C.SRLI (RV32 NSE, nzuimm[5]=1)
-            // C.SRAI (RV32 NSE, nzuimm[5]=1)
-            // C.ANDI
-            // C.SUB
-            // C.XOR
-            // C.OR
-            // C.AND
-            // Reserved
-            // Reserved
             0b100 => {
+                const cb_type = @bitCast(Encodings.CBType, instruction);
+                switch (@truncate(u2, cb_type.offset2 & 0b011)) {
+                    // C.SRLI (RV32 NSE, nzuimm[5]=1)
+                    0b00 => {
+                        self.regs[cb_type.rs1] = std.math.shr(u32, self.regs[cb_type.rs1], @as(u32, cb_type.offset1));
+                    },
+                    // C.SRAI (RV32 NSE, nzuimm[5]=1)
+                    0b01 => {
+                        // TODO make arithmetic shift
+                        self.regs[cb_type.rs1] = std.math.shr(u32, self.regs[cb_type.rs1], @as(u32, cb_type.offset1));
+                    },
+                    // C.ANDI
+                    0b10 => {
+                        const imm = @as(u32, cb_type.offset2) << 5 & @as(u32, cb_type.offset1);
+                        self.regs[cb_type.rs1] = self.regs[cb_type.rs1] & imm;
+                    },
+                    0b11 => {
+                        const rs2 = cb_type.offset1 & 0b00111;
+                        switch (@truncate(u2, cb_type.offset1 & 0b11000 >> 3)) {
+                            // C.SUB
+                            0b00 => {
+                                self.regs[cb_type.rs1] -= self.regs[rs2];
+                            },
+                            // C.XOR
+                            0b01 => {
+                                self.regs[cb_type.rs1] ^= self.regs[rs2];
+                            },
+                            // C.OR
+                            0b10 => {
+                                self.regs[cb_type.rs1] |= self.regs[rs2];
+                            },
+                            // C.AND
+                            0b11 => {
+                                self.regs[cb_type.rs1] &= self.regs[rs2];
+                            },
+                        }
+                    },
+                }
+
                 std.log.info("C.SRLI", .{});
             },
             // C.J
@@ -221,10 +251,34 @@ const Cpu = struct {
             },
             // C.BEQZ
             0b110 => {
+                const cb_type = @bitCast(Encodings.CBType, instruction);
+                const sign = @bitCast(i13, @truncate(u13, instruction & 0b1000000000000));
+                const p_8 = @as(i13, cb_type.offset2 & 0b100) << 6;
+                const p_4_3 = @as(i13, cb_type.offset2 & 0b011) << 3;
+                const p_7_6 = @as(i13, cb_type.offset1 & 0b11000) << 3;
+                const p_2_1 = @as(i13, cb_type.offset1 & 0b00110);
+                const p_5 = @as(i13, cb_type.offset1 & 0b00001) << 5;
+                const imm = @as(i64, sign | p_8 | p_7_6 | p_5 | p_4_3 | p_2_1);
+
+                if (self.regs[cb_type.rs1] == 0) {
+                    self.pc = @intCast(u32, @as(i64, self.pc) + imm);
+                }
                 std.log.info("C.BEQZ", .{});
             },
             // C.BNEZ
             0b111 => {
+                const cb_type = @bitCast(Encodings.CBType, instruction);
+                const sign = @bitCast(i13, @truncate(u13, instruction & 0b1000000000000));
+                const p_8 = @as(i13, cb_type.offset2 & 0b100) << 6;
+                const p_4_3 = @as(i13, cb_type.offset2 & 0b011) << 3;
+                const p_7_6 = @as(i13, cb_type.offset1 & 0b11000) << 3;
+                const p_2_1 = @as(i13, cb_type.offset1 & 0b00110);
+                const p_5 = @as(i13, cb_type.offset1 & 0b00001) << 5;
+                const imm = @as(i64, sign | p_8 | p_7_6 | p_5 | p_4_3 | p_2_1);
+
+                if (self.regs[cb_type.rs1] != 0) {
+                    self.pc = @intCast(u32, @as(i64, self.pc) + imm);
+                }
                 std.log.info("C.BNEZ", .{});
             },
             else => return true,
