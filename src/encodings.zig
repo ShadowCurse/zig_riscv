@@ -94,6 +94,53 @@ pub const JType = packed struct {
     }
 };
 
+pub const CIType = packed struct {
+    opcode: u2,
+    imm1: u5,
+    rd: u5,
+    imm2: u1,
+    func3: u3,
+};
+
+pub const CIWType = packed struct {
+    opcode: u2,
+    rd: u3,
+    imm: u8,
+    func3: u3,
+};
+
+pub const CLType = packed struct {
+    opcode: u2,
+    rd: u3,
+    imm1: u2,
+    rs1: u3,
+    imm2: u3,
+    func3: u3,
+};
+
+pub const CSType = packed struct {
+    opcode: u2,
+    rs2: u3,
+    imm1: u2,
+    rs1: u3,
+    imm2: u3,
+    func3: u3,
+};
+
+pub const CBType = packed struct {
+    opcode: u2,
+    offset1: u5,
+    rs1: u3,
+    offset2: u3,
+    func3: u3,
+};
+
+pub const CJType = packed struct {
+    opcode: u2,
+    imm: u11,
+    func3: u3,
+};
+
 test "IType" {
     const expect = std.testing.expect;
 
