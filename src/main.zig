@@ -128,8 +128,10 @@ const Cpu = struct {
         }
         return true;
     }
+
     fn run_compressed_01(self: *Self, original_instruction: u32) bool {
         const instruction = @truncate(u16, original_instruction);
+        var next_pc = self.pc + 2;
         std.log.info("run_compressed_01: {x}", .{instruction});
         switch ((instruction & 0b1110000000000000) >> 13) {
             // C.NOP (HINT, nzimm != 0)
@@ -158,7 +160,7 @@ const Cpu = struct {
 
                 std.log.info("C.JAL: {any}", .{cj_type});
                 self.regs[1] = self.pc + 2;
-                self.pc = @intCast(u32, @as(i64, self.pc) + imm);
+                next_pc = @intCast(u32, @as(i64, self.pc) + imm);
             },
             // C.LI (HINT, rd=0)
             0b010 => {
@@ -190,39 +192,40 @@ const Cpu = struct {
             },
             0b100 => {
                 const cb_type = @bitCast(Encodings.CBType, instruction);
+                const rs1 = @as(u32, cb_type.rs1) + 8;
                 switch (@truncate(u2, cb_type.offset2 & 0b011)) {
                     // C.SRLI (RV32 NSE, nzuimm[5]=1)
                     0b00 => {
-                        self.regs[cb_type.rs1] = std.math.shr(u32, self.regs[cb_type.rs1], @as(u32, cb_type.offset1));
+                        self.regs[rs1] = std.math.shr(u32, self.regs[rs1], @as(u32, cb_type.offset1));
                     },
                     // C.SRAI (RV32 NSE, nzuimm[5]=1)
                     0b01 => {
                         // TODO make arithmetic shift
-                        self.regs[cb_type.rs1] = std.math.shr(u32, self.regs[cb_type.rs1], @as(u32, cb_type.offset1));
+                        self.regs[rs1] = std.math.shr(u32, self.regs[rs1], @as(u32, cb_type.offset1));
                     },
                     // C.ANDI
                     0b10 => {
                         const imm = @as(u32, cb_type.offset2) << 5 & @as(u32, cb_type.offset1);
-                        self.regs[cb_type.rs1] = self.regs[cb_type.rs1] & imm;
+                        self.regs[rs1] = self.regs[rs1] & imm;
                     },
                     0b11 => {
-                        const rs2 = cb_type.offset1 & 0b00111;
+                        const rs2 = cb_type.offset1 & 0b00111 + 8;
                         switch (@truncate(u2, cb_type.offset1 & 0b11000 >> 3)) {
                             // C.SUB
                             0b00 => {
-                                self.regs[cb_type.rs1] -= self.regs[rs2];
+                                self.regs[rs1] -= self.regs[rs2];
                             },
                             // C.XOR
                             0b01 => {
-                                self.regs[cb_type.rs1] ^= self.regs[rs2];
+                                self.regs[rs1] ^= self.regs[rs2];
                             },
                             // C.OR
                             0b10 => {
-                                self.regs[cb_type.rs1] |= self.regs[rs2];
+                                self.regs[rs1] |= self.regs[rs2];
                             },
                             // C.AND
                             0b11 => {
-                                self.regs[cb_type.rs1] &= self.regs[rs2];
+                                self.regs[rs1] &= self.regs[rs2];
                             },
                         }
                     },
@@ -247,72 +250,117 @@ const Cpu = struct {
                 const imm = @as(i64, @bitCast(i13, sign | p_11 | p_10 | p_9_8 | p_7 | p_6 | p_5 | p_4 | p_3_1));
 
                 std.log.info("C.J: {any}", .{cj_type});
-                self.pc = @intCast(u32, @as(i64, self.pc) + imm);
+                next_pc = @intCast(u32, @as(i64, self.pc) + imm);
             },
             // C.BEQZ
             0b110 => {
                 const cb_type = @bitCast(Encodings.CBType, instruction);
-                const sign = @bitCast(i13, @truncate(u13, instruction & 0b1000000000000));
-                const p_8 = @as(i13, cb_type.offset2 & 0b100) << 6;
-                const p_4_3 = @as(i13, cb_type.offset2 & 0b011) << 3;
-                const p_7_6 = @as(i13, cb_type.offset1 & 0b11000) << 3;
-                const p_2_1 = @as(i13, cb_type.offset1 & 0b00110);
-                const p_5 = @as(i13, cb_type.offset1 & 0b00001) << 5;
-                const imm = @as(i64, sign | p_8 | p_7_6 | p_5 | p_4_3 | p_2_1);
+                const rs1 = @as(u32, cb_type.rs1) + 8;
 
-                if (self.regs[cb_type.rs1] == 0) {
-                    self.pc = @intCast(u32, @as(i64, self.pc) + imm);
-                }
-                std.log.info("C.BEQZ", .{});
+                const sign = @truncate(u9, (instruction & 0b1000000000000) >> 3);
+                const p_8 = @as(u9, cb_type.offset2 & 0b100) << 6;
+                const p_4_3 = @as(u9, cb_type.offset2 & 0b011) << 3;
+                const p_7_6 = @as(u9, cb_type.offset1 & 0b11000) << 3;
+                const p_2_1 = @as(u9, cb_type.offset1 & 0b00110);
+                const p_5 = @as(u9, cb_type.offset1 & 0b00001) << 5;
+                const imm = @as(i64, @bitCast(i9, sign | p_8 | p_7_6 | p_5 | p_4_3 | p_2_1));
+
+                const addr = @intCast(u32, @as(i64, self.pc) + imm);
+                next_pc = next_pc * @boolToInt(self.regs[rs1] != 0) + addr * @boolToInt(self.regs[rs1] == 0);
+                std.log.info("C.BEQZ: reg: {}, addr: {x}", .{ rs1, addr });
             },
             // C.BNEZ
             0b111 => {
                 const cb_type = @bitCast(Encodings.CBType, instruction);
-                const sign = @bitCast(i13, @truncate(u13, instruction & 0b1000000000000));
-                const p_8 = @as(i13, cb_type.offset2 & 0b100) << 6;
-                const p_4_3 = @as(i13, cb_type.offset2 & 0b011) << 3;
-                const p_7_6 = @as(i13, cb_type.offset1 & 0b11000) << 3;
-                const p_2_1 = @as(i13, cb_type.offset1 & 0b00110);
-                const p_5 = @as(i13, cb_type.offset1 & 0b00001) << 5;
-                const imm = @as(i64, sign | p_8 | p_7_6 | p_5 | p_4_3 | p_2_1);
+                const rs1 = @as(u32, cb_type.rs1) + 8;
 
-                if (self.regs[cb_type.rs1] != 0) {
-                    self.pc = @intCast(u32, @as(i64, self.pc) + imm);
-                }
-                std.log.info("C.BNEZ", .{});
+                const sign = @truncate(u9, (instruction & 0b1000000000000) >> 3);
+                const p_8 = @as(u9, cb_type.offset2 & 0b100) << 6;
+                const p_4_3 = @as(u9, cb_type.offset2 & 0b011) << 3;
+                const p_7_6 = @as(u9, cb_type.offset1 & 0b11000) << 3;
+                const p_2_1 = @as(u9, cb_type.offset1 & 0b00110);
+                const p_5 = @as(u9, cb_type.offset1 & 0b00001) << 5;
+                const imm = @as(i64, @bitCast(i9, sign | p_8 | p_7_6 | p_5 | p_4_3 | p_2_1));
+
+                const addr = @intCast(u32, @as(i64, self.pc) + imm);
+                next_pc = next_pc * @boolToInt(self.regs[rs1] == 0) + addr * @boolToInt(self.regs[rs1] != 0);
+                std.log.info("C.BNEZ: reg: {}, addr: {x}", .{ rs1, addr });
             },
             else => return true,
         }
-        self.pc += 2;
+        self.pc = next_pc;
         return false;
     }
-    fn run_compressed_10(self: *Self, instruction: u32) bool {
+
+    fn run_compressed_10(self: *Self, original_instruction: u32) bool {
+        const instruction = @truncate(u16, original_instruction);
+        var next_pc = self.pc + 2;
         std.log.info("run_compressed_10", .{});
         switch ((instruction & 0b1110000000000000) >> 13) {
             // C.SLLI (HINT, rd=0; RV32 NSE, nzuimm[5]=1)
-            0b000 => {},
+            0b000 => {
+                const ci_type = @bitCast(Encodings.CIType, instruction);
+                self.regs[ci_type.rd] = std.math.shl(u32, self.regs[ci_type.rd], @as(u32, ci_type.imm1));
+                std.log.info("C.SLLI: {any}", .{ci_type});
+            },
             // C.FLDSP (RV32/64)
-            0b001 => {},
+            0b001 => unreachable(),
             // C.LWSP (RES, rd=0
-            0b010 => {},
+            0b010 => {
+                const ci_type = @bitCast(Encodings.CIType, instruction);
+                const p_5 = @as(u16, ci_type.imm2) << 5;
+                const p_4_2 = @as(u16, ci_type.imm1 & 0b11100);
+                const p_7_6 = @as(u16, ci_type.imm1 & 0b00011) << 6;
+                const imm = @as(u32, p_7_6 | p_5 | p_4_2);
+                self.regs[ci_type.rd] = self.ram.read(u32, self.regs[2] + imm);
+                std.log.info("C.LWSP: {any}", .{ci_type});
+            },
             // C.FLWSP (RV32)
-            0b011 => {},
-            // C.JR (RES, rs1=0)
-            // C.MV (HINT, rd=0)
-            // C.EBREAK
-            // C.JALR
-            // C.ADD (HINT, rd=0)
-            0b100 => {},
+            0b011 => unreachable(),
+            0b100 => {
+                const ci_type = @bitCast(Encodings.CIType, instruction);
+                switch (ci_type.imm2) {
+                    0b0 => {
+                        switch (ci_type.imm1) {
+                            // C.JR (RES, rs1=0)
+                            0 => {
+                                next_pc = self.regs[ci_type.rd];
+                                std.log.info("C.JR: {any}", .{ci_type});
+                            },
+                            // C.MV (HINT, rd=0)
+                            else => {
+                                self.regs[ci_type.rd] = self.regs[ci_type.imm1];
+                                std.log.info("C.MV: {any}", .{ci_type});
+                            },
+                        }
+                    },
+                    0b1 => {
+                        if (ci_type.imm1 == 0 and ci_type.imm2 == 0) {
+                            // C.EBREAK
+                            std.log.info("C.EBREAK: {any}", .{ci_type});
+                        } else if (ci_type.imm1 == 0) {
+                            // C.JALR
+                            self.regs[1] = self.pc + 2;
+                            next_pc = self.regs[ci_type.rd];
+                            std.log.info("C.JALR: {any}", .{ci_type});
+                        } else {
+                            // C.ADD (HINT, rd=0)
+                            self.regs[ci_type.rd] += self.regs[ci_type.imm1];
+                            std.log.info("C.ADD: {any}", .{ci_type});
+                        }
+                    },
+                }
+            },
             // C.FSDSP (RV32/64)
-            0b101 => {},
+            0b101 => unreachable(),
             // C.SWSP
             0b110 => {},
             // C.FSWSP (RV32)
-            0b111 => {},
+            0b111 => unreachable(),
             else => unreachable(),
         }
-        _ = self;
-        return true;
+        self.pc = next_pc;
+        return false;
     }
 
     fn run_full(self: *Self, instruction: u32) bool {
