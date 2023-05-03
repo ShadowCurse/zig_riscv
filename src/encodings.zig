@@ -7,6 +7,11 @@ pub const RType = packed struct {
     rs1: u5,
     rs2: u5,
     func7: u7,
+
+    const Self = @This();
+    pub fn format(self: *const Self, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+        try writer.print("rs1: {}, rs2: {}, rd: {}", .{ self.rs1, self.rs2, self.rd });
+    }
 };
 
 pub const IType = packed struct {
@@ -19,6 +24,9 @@ pub const IType = packed struct {
     const Self = @This();
     pub fn get_imm(self: *const Self) i32 {
         return self.imm;
+    }
+    pub fn format(self: *const Self, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+        try writer.print("rs1: {}, imm: {}, rd: {}", .{ self.rs1, self.get_imm(), self.rd });
     }
 };
 
@@ -37,6 +45,9 @@ pub const SType = packed struct {
         const imm1 = @as(i12, self.imm1);
         return @as(i32, sign | imm2 | imm1);
     }
+    pub fn format(self: *const Self, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+        try writer.print("rs1: {}, rs2: {}, imm: {}", .{ self.rs1, self.rs2, self.get_imm() });
+    }
 };
 
 pub const BType = packed struct {
@@ -54,6 +65,9 @@ pub const BType = packed struct {
         const p_4_1 = @as(i13, self.imm1 & 0b11110);
         const p_11 = @as(i13, self.imm1 & 1) << 11;
         return @as(i32, sign | p_11 | p_10_5 | p_4_1);
+    }
+    pub fn format(self: *const Self, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+        try writer.print("rs1: {}, rs2: {}, imm: {}", .{ self.rs1, self.rs2, self.get_imm() });
     }
 };
 
@@ -91,6 +105,9 @@ pub const JType = packed struct {
         // std.debug.print("res: {x}\n", .{res});
 
         return @as(i32, sign | p_20 | p_19_12 | p_11 | p_10_1);
+    }
+    pub fn format(self: *const Self, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+        try writer.print("rd: {}, imm: {}", .{ self.rd, self.get_imm() });
     }
 };
 
