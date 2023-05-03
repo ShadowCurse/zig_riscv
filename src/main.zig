@@ -37,5 +37,5 @@ pub fn main() !void {
         cpu.print_regs();
     } else |err| {
         std.log.info("error: {}", .{err});
-      }
+    }
 }

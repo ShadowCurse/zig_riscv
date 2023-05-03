@@ -82,6 +82,8 @@ pub const Cpu = struct {
             0b10 => try self.run_compressed_10(instruction),
             0b11 => try self.run_full(instruction),
         }
+        // clear x0 in case any instruction has updated it
+        self.regs[0] = 0;
     }
 
     fn run_compressed_00(self: *Self, original_instruction: u32) SocError!void {
@@ -392,12 +394,8 @@ pub const Cpu = struct {
             0b1100111 => {
                 const i_type = @bitCast(Encodings.IType, instruction);
                 std.log.info("JALR: {any}", .{i_type});
-                // std.log.info("rs1: {}", .{self.regs[i_type.rs1]});
-                // std.log.info("imm: {}", .{i_type.get_imm()});
-                std.log.info("JARL before: {}", .{next_pc});
                 next_pc = @intCast(u32, @intCast(i64, self.regs[i_type.rs1]) +% @as(i64, i_type.get_imm())) & 0xfffffffe;
                 self.regs[i_type.rd] = self.pc + 4;
-                std.log.info("JARL next_pc: {}", .{next_pc});
             },
             0b1100011 => {
                 const b_type = @bitCast(Encodings.BType, instruction);
@@ -407,7 +405,6 @@ pub const Cpu = struct {
                     //BEQ
                     0b000 => {
                         std.log.info("BEQ: {any}", .{b_type});
-                        std.log.info("BEQ: {}", .{b_type.get_imm()});
                         if (a == b) {
                             next_pc = @intCast(u32, @as(i64, self.pc) +% @as(i64, b_type.get_imm()));
                         }
