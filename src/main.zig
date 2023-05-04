@@ -10,10 +10,12 @@ pub fn main() !void {
     const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
 
-    if (args.len != 2) {
-        std.log.info("No file provided", .{});
+    if (args.len != 3) {
+        std.log.info("Invalid arguments: expect [executable_path] [load_address]", .{});
         std.process.exit(1);
     }
+
+    const load_address = try std.fmt.parseInt(u32, args[2], 16);
 
     const file = try std.fs.cwd().openFile(args[1], .{});
     defer file.close();
@@ -21,12 +23,12 @@ pub fn main() !void {
     var code = try file.reader().readAllAlloc(allocator, 99999);
     defer allocator.free(code);
 
-    var ram: Soc.Ram = .{ .base_addr = 0x110b4, .mem = undefined };
+    var ram: Soc.Ram = .{ .base_addr = load_address, .mem = undefined };
     std.mem.copy(u8, &ram.mem, code);
 
     var cpu = Soc.Cpu{
         .regs = undefined,
-        .pc = 0x110b4,
+        .pc = load_address,
         .ram = ram,
     };
     std.mem.set(u32, &cpu.regs, 0);
