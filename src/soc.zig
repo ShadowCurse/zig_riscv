@@ -57,7 +57,11 @@ pub const Ram = struct {
 };
 
 pub const Cpu = struct {
-    regs: [32]u32,
+    const CSR_REGS: u32 = 4096;
+    const REGS: u32 = 32;
+
+    csr: [CSR_REGS]u32,
+    regs: [REGS]u32,
     pc: u32,
     ram: Ram,
 
@@ -570,6 +574,51 @@ pub const Cpu = struct {
                             },
                             else => return SocError.InvalidInstruction,
                         }
+                    },
+                }
+            },
+            // RV32/RV64 Zicsr Standard Extension
+            0b111011 => {
+                const i_type = @bitCast(Encodings.IType, instruction);
+                const csr_reg = @bitCast(u32, i_type.get_imm());
+                switch (i_type.func3) {
+                    0b000 => return SocError.InvalidInstruction,
+                    // CSRRW
+                    0b001 => {
+                        const csr_value = self.csr[csr_reg];
+                        self.regs[i_type.rd] = csr_value;
+                        self.csr[csr_reg] = self.regs[i_type.rs1];
+                    },
+                    // CSRRS
+                    0b010 => {
+                        const csr_value = self.csr[csr_reg];
+                        self.regs[i_type.rd] = csr_value;
+                        self.csr[csr_reg] |= self.regs[i_type.rs1];
+                    },
+                    // CSRRC
+                    0b011 => {
+                        const csr_value = self.csr[csr_reg];
+                        self.regs[i_type.rd] = csr_value;
+                        self.csr[csr_reg] &= ~self.regs[i_type.rs1];
+                    },
+                    0b100 => return SocError.InvalidInstruction,
+                    // CSRRWI
+                    0b101 => {
+                        const csr_value = self.csr[csr_reg];
+                        self.regs[i_type.rd] = csr_value;
+                        self.csr[csr_reg] = i_type.rs1;
+                    },
+                    // CSRRSI
+                    0b110 => {
+                        const csr_value = self.csr[csr_reg];
+                        self.regs[i_type.rd] = csr_value;
+                        self.csr[csr_reg] |= i_type.rs1;
+                    },
+                    // CSRRCI
+                    0b111 => {
+                        const csr_value = self.csr[csr_reg];
+                        self.regs[i_type.rd] = csr_value;
+                        self.csr[csr_reg] &= ~i_type.rs1;
                     },
                 }
             },
