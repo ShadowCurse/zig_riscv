@@ -27,6 +27,7 @@ pub fn main() !void {
     std.mem.copy(u8, &ram.mem, code);
 
     var cpu = Soc.Cpu{
+        .csr = undefined,
         .regs = undefined,
         .pc = load_address,
         .ram = ram,
