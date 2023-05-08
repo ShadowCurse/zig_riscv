@@ -26,7 +26,7 @@ pub const IType = packed struct {
         return self.imm;
     }
     pub fn format(self: *const Self, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-        try writer.print("rs1: {}, imm: {}, rd: {}", .{ self.rs1, self.get_imm(), self.rd });
+        try writer.print("rs1: {}, imm: i32({})/u32({}), rd: {}", .{ self.rs1, self.get_imm(), @bitCast(u32, self.get_imm()), self.rd });
     }
 };
 
@@ -46,7 +46,7 @@ pub const SType = packed struct {
         return @as(i32, sign | imm2 | imm1);
     }
     pub fn format(self: *const Self, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-        try writer.print("rs1: {}, rs2: {}, imm: {}", .{ self.rs1, self.rs2, self.get_imm() });
+        try writer.print("rs1: {}, rs2: {}, imm: i32({})/u32({})", .{ self.rs1, self.rs2, self.get_imm(), @bitCast(u32, self.get_imm()) });
     }
 };
 
@@ -67,7 +67,7 @@ pub const BType = packed struct {
         return @as(i32, sign | p_11 | p_10_5 | p_4_1);
     }
     pub fn format(self: *const Self, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-        try writer.print("rs1: {}, rs2: {}, imm: {}", .{ self.rs1, self.rs2, self.get_imm() });
+        try writer.print("rs1: {}, rs2: {}, imm: i32({})/u32({})", .{ self.rs1, self.rs2, self.get_imm(), @bitCast(u32, self.get_imm()) });
     }
 };
 
@@ -107,7 +107,7 @@ pub const JType = packed struct {
         return @as(i32, sign | p_20 | p_19_12 | p_11 | p_10_1);
     }
     pub fn format(self: *const Self, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-        try writer.print("rd: {}, imm: {}", .{ self.rd, self.get_imm() });
+        try writer.print("rd: {}, imm: i32({})/u32({})", .{ self.rd, self.get_imm(), @bitCast(u32, self.get_imm()) });
     }
 };
 
