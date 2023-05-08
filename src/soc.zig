@@ -10,12 +10,24 @@ const SocError = error{
 };
 
 pub const Ram = struct {
+    const RAM_SIZE: u32 = 1024 * 1024 * 128;
     base_addr: u32,
-    mem: [1024 * 8]u8,
+    mem: []u8,
 
     const Self = @This();
 
-    fn read(self: *Self, comptime t: type, addr: u32) !t {
+    pub fn new(load_address: u32, allocator: std.mem.Allocator) !Self {
+        return Self{
+            .base_addr = load_address,
+            .mem = try allocator.alloc(u8, RAM_SIZE),
+        };
+    }
+
+    pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+        allocator.free(self.mem);
+    }
+
+    pub fn read(self: *Self, comptime t: type, addr: u32) !t {
         std.log.info("{any}::read {x}", .{ Self, addr });
         const index = std.math.sub(u32, addr, self.base_addr) catch return SocError.InvalidMemoryRead;
         switch (t) {
@@ -35,7 +47,7 @@ pub const Ram = struct {
         }
     }
 
-    fn write(self: *Self, comptime t: type, addr: u32, value: t) !void {
+    pub fn write(self: *Self, comptime t: type, addr: u32, value: t) !void {
         std.log.info("{any}::write {x}", .{ Self, addr });
         const index = std.math.sub(u32, addr, self.base_addr) catch return SocError.InvalidMemoryWrite;
         switch (t) {
@@ -68,6 +80,22 @@ pub const Cpu = struct {
     uart: Uart.Uart,
 
     const Self = @This();
+
+    pub fn new(load_address: u32, allocator: std.mem.Allocator) !Self {
+        var self = Self{
+            .csr = undefined,
+            .regs = undefined,
+            .pc = load_address,
+            .ram = try Ram.new(load_address, allocator),
+            .uart = Uart.Uart.new(),
+        };
+        std.mem.set(u32, &self.regs, 0);
+        return self;
+    }
+
+    pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+        self.ram.deinit(allocator);
+    }
 
     pub fn print_regs(self: *Self) void {
         for (self.regs, 0..) |reg, i| {
