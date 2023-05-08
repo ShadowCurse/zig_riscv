@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const Encodings = @import("encodings.zig");
+const Uart = @import("uart.zig");
 
 const SocError = error{
     InvalidMemoryRead,
@@ -14,7 +15,7 @@ pub const Ram = struct {
 
     const Self = @This();
 
-    fn read(self: *Self, comptime t: type, addr: u32) SocError!t {
+    fn read(self: *Self, comptime t: type, addr: u32) !t {
         std.log.info("{any}::read {x}", .{ Self, addr });
         const index = std.math.sub(u32, addr, self.base_addr) catch return SocError.InvalidMemoryRead;
         switch (t) {
@@ -34,7 +35,7 @@ pub const Ram = struct {
         }
     }
 
-    fn write(self: *Self, comptime t: type, addr: u32, value: t) SocError!void {
+    fn write(self: *Self, comptime t: type, addr: u32, value: t) !void {
         std.log.info("{any}::write {x}", .{ Self, addr });
         const index = std.math.sub(u32, addr, self.base_addr) catch return SocError.InvalidMemoryWrite;
         switch (t) {
@@ -64,6 +65,7 @@ pub const Cpu = struct {
     regs: [REGS]u32,
     pc: u32,
     ram: Ram,
+    uart: Uart.Uart,
 
     const Self = @This();
 
@@ -74,11 +76,37 @@ pub const Cpu = struct {
         std.log.info("pc: {x}", .{self.pc});
     }
 
-    pub fn fetch_next_intruction(self: *Self) SocError!u32 {
+    pub fn fetch_next_intruction(self: *Self) !u32 {
         return try self.ram.read(u32, self.pc);
     }
 
-    pub fn run_instruction(self: *Self) SocError!void {
+    pub fn read(self: *Self, comptime t: type, addr: u32) !t {
+        switch (t) {
+            u32 => {
+                if (addr > Uart.Uart.UART8250_TX_REG_ADDR and addr <= Uart.Uart.UART8250_TX_REG_ADDR + Uart.Uart.REGS_SIZE) {
+                    return self.uart.bus_read(addr);
+                } else {
+                    return self.ram.read(t, addr);
+                }
+            },
+            else => return self.ram.read(t, addr),
+        }
+    }
+
+    pub fn write(self: *Self, comptime t: type, addr: u32, value: t) !void {
+        switch (t) {
+            u32 => {
+                if (addr > Uart.Uart.UART8250_TX_REG_ADDR and addr <= Uart.Uart.UART8250_TX_REG_ADDR + Uart.Uart.REGS_SIZE) {
+                    return self.uart.bus_write(addr, value);
+                } else {
+                    return self.ram.write(t, addr, value);
+                }
+            },
+            else => return self.ram.write(t, addr, value),
+        }
+    }
+
+    pub fn run_instruction(self: *Self) !void {
         const instruction = try self.fetch_next_intruction();
         switch (@truncate(u2, instruction & 0b11)) {
             0b00 => try self.run_compressed_00(instruction),
@@ -90,7 +118,7 @@ pub const Cpu = struct {
         self.regs[0] = 0;
     }
 
-    fn run_compressed_00(self: *Self, original_instruction: u32) SocError!void {
+    fn run_compressed_00(self: *Self, original_instruction: u32) !void {
         const instruction = @truncate(u16, original_instruction);
         std.log.info("{any}::run_compressed_00 {x}", .{ Self, instruction });
         switch (@truncate(u3, (instruction & 0b1110000000000000) >> 13)) {
@@ -115,7 +143,7 @@ pub const Cpu = struct {
                 const p_5_3 = @as(u9, cl_type.imm2) << 3;
                 const imm = @as(u32, p_2 | p_5_3 | p_6);
                 std.log.info("LW: {any}", .{cl_type});
-                self.regs[cl_type.rd] = try self.ram.read(u32, self.regs[cl_type.rs1] + imm);
+                self.regs[cl_type.rd] = try self.read(u32, self.regs[cl_type.rs1] + imm);
             },
             // C.FLW (RV32)
             0b011 => return SocError.InvalidInstruction,
@@ -131,14 +159,14 @@ pub const Cpu = struct {
                 const p_5_3 = @as(u9, cs_type.imm2) << 3;
                 const imm = @as(u32, p_2 | p_5_3 | p_6);
                 std.log.info("SW: {any}", .{cs_type});
-                try self.ram.write(u32, self.regs[cs_type.rs1] + imm, self.regs[cs_type.rs2]);
+                try self.write(u32, self.regs[cs_type.rs1] + imm, self.regs[cs_type.rs2]);
             },
             // C.FSW (RV32)
             0b111 => return SocError.InvalidInstruction,
         }
     }
 
-    fn run_compressed_01(self: *Self, original_instruction: u32) SocError!void {
+    fn run_compressed_01(self: *Self, original_instruction: u32) !void {
         const instruction = @truncate(u16, original_instruction);
         std.log.info("{any}::run_compressed_01 {x}", .{ Self, instruction });
         var next_pc = self.pc + 2;
@@ -299,7 +327,7 @@ pub const Cpu = struct {
         self.pc = next_pc;
     }
 
-    fn run_compressed_10(self: *Self, original_instruction: u32) SocError!void {
+    fn run_compressed_10(self: *Self, original_instruction: u32) !void {
         const instruction = @truncate(u16, original_instruction);
         std.log.info("{any}::run_compressed_10 {x}", .{ Self, instruction });
         var next_pc = self.pc + 2;
@@ -319,7 +347,7 @@ pub const Cpu = struct {
                 const p_4_2 = @as(u16, ci_type.imm1 & 0b11100);
                 const p_7_6 = @as(u16, ci_type.imm1 & 0b00011) << 6;
                 const imm = @as(u32, p_7_6 | p_5 | p_4_2);
-                self.regs[ci_type.rd] = try self.ram.read(u32, self.regs[2] + imm);
+                self.regs[ci_type.rd] = try self.read(u32, self.regs[2] + imm);
                 std.log.info("C.LWSP: {any}", .{ci_type});
             },
             // C.FLWSP (RV32)
@@ -368,7 +396,7 @@ pub const Cpu = struct {
         self.pc = next_pc;
     }
 
-    fn run_full(self: *Self, instruction: u32) SocError!void {
+    fn run_full(self: *Self, instruction: u32) !void {
         var next_pc = self.pc + 4;
 
         var opcode = @truncate(u7, instruction & 0b1111111);
@@ -458,27 +486,27 @@ pub const Cpu = struct {
                     //LB
                     0b000 => {
                         std.log.info("LB: {any}", .{i_type});
-                        self.regs[i_type.rd] = @bitCast(u32, @as(i32, @bitCast(i8, try self.ram.read(u8, addr))));
+                        self.regs[i_type.rd] = @bitCast(u32, @as(i32, @bitCast(i8, try self.read(u8, addr))));
                     },
                     //LH
                     0b001 => {
                         std.log.info("LH: {any}", .{i_type});
-                        self.regs[i_type.rd] = @bitCast(u32, @as(i32, @bitCast(i16, try self.ram.read(u16, addr))));
+                        self.regs[i_type.rd] = @bitCast(u32, @as(i32, @bitCast(i16, try self.read(u16, addr))));
                     },
                     //LW
                     0b010 => {
                         std.log.info("LW: {any}", .{i_type});
-                        self.regs[i_type.rd] = try self.ram.read(u32, addr);
+                        self.regs[i_type.rd] = try self.read(u32, addr);
                     },
                     //LBU
                     0b100 => {
                         std.log.info("LBU: {any}", .{i_type});
-                        self.regs[i_type.rd] = @as(u32, try self.ram.read(u8, addr));
+                        self.regs[i_type.rd] = @as(u32, try self.read(u8, addr));
                     },
                     //LHU
                     0b101 => {
                         std.log.info("LHU: {any}", .{i_type});
-                        self.regs[i_type.rd] = @as(u32, try self.ram.read(u16, addr));
+                        self.regs[i_type.rd] = @as(u32, try self.read(u16, addr));
                     },
                     else => return SocError.InvalidInstruction,
                 }
@@ -491,19 +519,19 @@ pub const Cpu = struct {
                     0b000 => {
                         std.log.info("SB: {any}", .{s_type});
                         const data = self.regs[s_type.rs2];
-                        try self.ram.write(u8, addr, @truncate(u8, data));
+                        try self.write(u8, addr, @truncate(u8, data));
                     },
                     //SH
                     0b001 => {
                         std.log.info("SH: {any}", .{s_type});
                         const data = self.regs[s_type.rs2];
-                        try self.ram.write(u16, addr, @truncate(u16, data));
+                        try self.write(u16, addr, @truncate(u16, data));
                     },
                     //SW
                     0b010 => {
                         std.log.info("SW: {any}", .{s_type});
                         const data = self.regs[s_type.rs2];
-                        try self.ram.write(u32, addr, data);
+                        try self.write(u32, addr, data);
                     },
                     else => return SocError.InvalidInstruction,
                 }

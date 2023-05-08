@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const Soc = @import("soc.zig");
+const Uart = @import("uart.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -31,10 +32,11 @@ pub fn main() !void {
         .regs = undefined,
         .pc = load_address,
         .ram = ram,
+        .uart = Uart.Uart.init(),
     };
     std.mem.set(u32, &cpu.regs, 0);
 
-    cpu.regs[2] = 0x110fc + @intCast(u32, code.len + 1000);
+    cpu.regs[2] = load_address + @intCast(u32, code.len);
 
     while (cpu.run_instruction()) {
         cpu.print_regs();
