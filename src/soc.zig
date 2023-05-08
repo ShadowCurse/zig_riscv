@@ -633,51 +633,6 @@ pub const Cpu = struct {
                     },
                 }
             },
-            // RV32/RV64 Zicsr Standard Extension
-            0b111011 => {
-                const i_type = @bitCast(Encodings.IType, instruction);
-                const csr_reg = @bitCast(u32, i_type.get_imm());
-                switch (i_type.func3) {
-                    0b000 => return SocError.InvalidInstruction,
-                    // CSRRW
-                    0b001 => {
-                        const csr_value = self.csr[csr_reg];
-                        self.regs[i_type.rd] = csr_value;
-                        self.csr[csr_reg] = self.regs[i_type.rs1];
-                    },
-                    // CSRRS
-                    0b010 => {
-                        const csr_value = self.csr[csr_reg];
-                        self.regs[i_type.rd] = csr_value;
-                        self.csr[csr_reg] |= self.regs[i_type.rs1];
-                    },
-                    // CSRRC
-                    0b011 => {
-                        const csr_value = self.csr[csr_reg];
-                        self.regs[i_type.rd] = csr_value;
-                        self.csr[csr_reg] &= ~self.regs[i_type.rs1];
-                    },
-                    0b100 => return SocError.InvalidInstruction,
-                    // CSRRWI
-                    0b101 => {
-                        const csr_value = self.csr[csr_reg];
-                        self.regs[i_type.rd] = csr_value;
-                        self.csr[csr_reg] = i_type.rs1;
-                    },
-                    // CSRRSI
-                    0b110 => {
-                        const csr_value = self.csr[csr_reg];
-                        self.regs[i_type.rd] = csr_value;
-                        self.csr[csr_reg] |= i_type.rs1;
-                    },
-                    // CSRRCI
-                    0b111 => {
-                        const csr_value = self.csr[csr_reg];
-                        self.regs[i_type.rd] = csr_value;
-                        self.csr[csr_reg] &= ~i_type.rs1;
-                    },
-                }
-            },
             0b0110011 => {
                 const r_type = @bitCast(Encodings.RType, instruction);
                 switch (r_type.func7) {
@@ -837,14 +792,55 @@ pub const Cpu = struct {
             },
             //FENCE
             0b0001111 => {},
+            // RV32/RV64 Zicsr Standard Extension
             0b1110011 => {
                 const i_type = @bitCast(Encodings.IType, instruction);
-                switch (i_type.get_imm()) {
-                    //ECALL
-                    0b000000000000 => {},
-                    //EBREAK
-                    0b000000000001 => {},
-                    else => return SocError.InvalidInstruction,
+                const csr_reg = @bitCast(u32, i_type.get_imm());
+                switch (i_type.func3) {
+                    0b000 => switch (i_type.get_imm()) {
+                        //ECALL
+                        0b000000000000 => {},
+                        //EBREAK
+                        0b000000000001 => {},
+                        else => return SocError.InvalidInstruction,
+                    },
+                    // CSRRW
+                    0b001 => {
+                        const csr_value = self.csr[csr_reg];
+                        self.regs[i_type.rd] = csr_value;
+                        self.csr[csr_reg] = self.regs[i_type.rs1];
+                    },
+                    // CSRRS
+                    0b010 => {
+                        const csr_value = self.csr[csr_reg];
+                        self.regs[i_type.rd] = csr_value;
+                        self.csr[csr_reg] |= self.regs[i_type.rs1];
+                    },
+                    // CSRRC
+                    0b011 => {
+                        const csr_value = self.csr[csr_reg];
+                        self.regs[i_type.rd] = csr_value;
+                        self.csr[csr_reg] &= ~self.regs[i_type.rs1];
+                    },
+                    0b100 => return SocError.InvalidInstruction,
+                    // CSRRWI
+                    0b101 => {
+                        const csr_value = self.csr[csr_reg];
+                        self.regs[i_type.rd] = csr_value;
+                        self.csr[csr_reg] = i_type.rs1;
+                    },
+                    // CSRRSI
+                    0b110 => {
+                        const csr_value = self.csr[csr_reg];
+                        self.regs[i_type.rd] = csr_value;
+                        self.csr[csr_reg] |= i_type.rs1;
+                    },
+                    // CSRRCI
+                    0b111 => {
+                        const csr_value = self.csr[csr_reg];
+                        self.regs[i_type.rd] = csr_value;
+                        self.csr[csr_reg] &= ~i_type.rs1;
+                    },
                 }
             },
             else => return SocError.InvalidInstruction,
