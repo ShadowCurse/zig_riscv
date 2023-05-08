@@ -46,7 +46,7 @@ pub const Uart = struct {
 
     const Self = @This();
 
-    pub fn init() Self {
+    pub fn new() Self {
         return Self{
             .dlab = false,
             .fifo_enabled = false,

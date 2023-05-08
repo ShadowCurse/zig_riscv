@@ -21,20 +21,13 @@ pub fn main() !void {
     const file = try std.fs.cwd().openFile(args[1], .{});
     defer file.close();
 
-    var code = try file.reader().readAllAlloc(allocator, 99999);
+    var code = try file.reader().readAllAlloc(allocator, std.math.maxInt(usize));
     defer allocator.free(code);
 
-    var ram: Soc.Ram = .{ .base_addr = load_address, .mem = undefined };
-    std.mem.copy(u8, &ram.mem, code);
+    var cpu = try Soc.Cpu.new(load_address, allocator);
+    defer cpu.deinit(allocator);
 
-    var cpu = Soc.Cpu{
-        .csr = undefined,
-        .regs = undefined,
-        .pc = load_address,
-        .ram = ram,
-        .uart = Uart.Uart.init(),
-    };
-    std.mem.set(u32, &cpu.regs, 0);
+    std.mem.copy(u8, cpu.ram.mem, code);
 
     cpu.regs[2] = load_address + @intCast(u32, code.len);
 
