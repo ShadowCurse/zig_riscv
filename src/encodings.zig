@@ -1,5 +1,17 @@
 const std = @import("std");
 
+// for Atomic instsructions
+pub const AType = packed struct {
+    opcode: u7,
+    rd: u5,
+    func3: u3,
+    rs1: u5,
+    rs2: u5,
+    rl: u1,
+    aw: u1,
+    func5: u5,
+};
+
 pub const RType = packed struct {
     opcode: u7,
     rd: u5,
@@ -10,7 +22,7 @@ pub const RType = packed struct {
 
     const Self = @This();
     pub fn format(self: *const Self, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-        try writer.print("rs1: {}, rs2: {}, rd: {}", .{ self.rs1, self.rs2, self.rd });
+        try writer.print("{x}: rs1: {}, rs2: {}, rd: {}", .{ @bitCast(u32, self.*), self.rs1, self.rs2, self.rd });
     }
 };
 
@@ -26,7 +38,7 @@ pub const IType = packed struct {
         return self.imm;
     }
     pub fn format(self: *const Self, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-        try writer.print("rs1: {}, imm: i32({})/u32({}), rd: {}", .{ self.rs1, self.get_imm(), @bitCast(u32, self.get_imm()), self.rd });
+        try writer.print("{x}: rs1: {}, imm: i32({})/u32({}), rd: {}", .{ @bitCast(u32, self.*), self.rs1, self.get_imm(), @bitCast(u32, self.get_imm()), self.rd });
     }
 };
 
@@ -46,7 +58,7 @@ pub const SType = packed struct {
         return @as(i32, sign | imm2 | imm1);
     }
     pub fn format(self: *const Self, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-        try writer.print("rs1: {}, rs2: {}, imm: i32({})/u32({})", .{ self.rs1, self.rs2, self.get_imm(), @bitCast(u32, self.get_imm()) });
+        try writer.print("{x}: rs1: {}, rs2: {}, imm: i32({})/u32({})", .{ @bitCast(u32, self.*), self.rs1, self.rs2, self.get_imm(), @bitCast(u32, self.get_imm()) });
     }
 };
 
@@ -67,7 +79,7 @@ pub const BType = packed struct {
         return @as(i32, sign | p_11 | p_10_5 | p_4_1);
     }
     pub fn format(self: *const Self, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-        try writer.print("rs1: {}, rs2: {}, imm: i32({})/u32({})", .{ self.rs1, self.rs2, self.get_imm(), @bitCast(u32, self.get_imm()) });
+        try writer.print("{x}: rs1: {}, rs2: {}, imm: i32({})/u32({})", .{ @bitCast(u32, self.*), self.rs1, self.rs2, self.get_imm(), @bitCast(u32, self.get_imm()) });
     }
 };
 
@@ -79,6 +91,9 @@ pub const UType = packed struct {
     const Self = @This();
     pub fn get_imm(self: *const Self) i32 {
         return @as(i32, self.imm) << 12;
+    }
+    pub fn format(self: *const Self, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+        try writer.print("{x}: rd: {}, imm: i32({})/u32({})", .{ @bitCast(u32, self.*), self.rd, self.get_imm(), @bitCast(u32, self.get_imm()) });
     }
 };
 
@@ -107,7 +122,7 @@ pub const JType = packed struct {
         return @as(i32, sign | p_20 | p_19_12 | p_11 | p_10_1);
     }
     pub fn format(self: *const Self, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-        try writer.print("rd: {}, imm: i32({})/u32({})", .{ self.rd, self.get_imm(), @bitCast(u32, self.get_imm()) });
+        try writer.print("{x}: rd: {}, imm: i32({})/u32({})", .{ @bitCast(u32, self.*), self.rd, self.get_imm(), @bitCast(u32, self.get_imm()) });
     }
 };
 
