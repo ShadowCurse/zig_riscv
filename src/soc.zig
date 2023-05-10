@@ -10,7 +10,7 @@ const SocError = error{
 };
 
 pub const Ram = struct {
-    const RAM_SIZE: u32 = 1024 * 1024 * 128;
+    const RAM_SIZE: u32 = 1024 * 1024 * 64;
     base_addr: u32,
     mem: []u8,
 
@@ -435,7 +435,7 @@ pub const Cpu = struct {
             0b0110111 => {
                 const u_type = @bitCast(Encodings.UType, instruction);
                 std.log.info("LUI: {any}", .{u_type});
-                self.regs[u_type.rd] = @intCast(u32, u_type.get_imm());
+                self.regs[u_type.rd] = @bitCast(u32, u_type.get_imm());
             },
             //AUIPC
             0b0010111 => {
@@ -509,7 +509,7 @@ pub const Cpu = struct {
             },
             0b0000011 => {
                 const i_type = @bitCast(Encodings.IType, instruction);
-                const addr = self.regs[i_type.rs1] + @bitCast(u32, i_type.get_imm());
+                const addr = @intCast(u32, @intCast(i64, self.regs[i_type.rs1]) + i_type.get_imm());
                 switch (i_type.func3) {
                     //LB
                     0b000 => {
@@ -786,6 +786,84 @@ pub const Cpu = struct {
                                 }
                             },
                         }
+                    },
+                    else => return SocError.InvalidInstruction,
+                }
+            },
+            // RV32A
+            0b0101111 => {
+                const a_type = @bitCast(Encodings.AType, instruction);
+                switch (a_type.func5) {
+                    //LR.W
+                    0b00010 => {
+                        std.log.info("LR.W: {any}", .{a_type});
+                        self.regs[a_type.rd] = try self.read(u32, a_type.rs1);
+                    },
+                    //SC.W
+                    0b00011 => {
+                        std.log.info("SC.W: {any}", .{a_type});
+                        try self.write(u32, a_type.rs1, self.regs[a_type.rs2]);
+                        self.regs[a_type.rd] = 0;
+                    },
+                    //AMOSWAP.W
+                    0b00001 => {
+                        std.log.info("AMOSWAP.W: {any}", .{a_type});
+                    },
+                    //AMOADD.W
+                    0b00000 => {
+                        std.log.info("AMOADD.W: {any}", .{a_type});
+                        const data_rs1 = try self.read(u32, a_type.rs1);
+                        const data_rs2 = self.regs[a_type.rs2];
+                        try self.write(u32, a_type.rs1, data_rs1 + data_rs2);
+                    },
+                    //AMOXOR.W
+                    0b00100 => {
+                        std.log.info("AMOXOR.W: {any}", .{a_type});
+                        const data_rs1 = try self.read(u32, a_type.rs1);
+                        const data_rs2 = self.regs[a_type.rs2];
+                        try self.write(u32, a_type.rs1, data_rs1 ^ data_rs2);
+                    },
+                    //AMOAND.W
+                    0b01100 => {
+                        std.log.info("AMOAND.W: {any}", .{a_type});
+                        const data_rs1 = try self.read(u32, a_type.rs1);
+                        const data_rs2 = self.regs[a_type.rs2];
+                        try self.write(u32, a_type.rs1, data_rs1 & data_rs2);
+                    },
+                    //AMOOR.W
+                    0b01000 => {
+                        std.log.info("AMOOR.W: {any}", .{a_type});
+                        const data_rs1 = try self.read(u32, a_type.rs1);
+                        const data_rs2 = self.regs[a_type.rs2];
+                        try self.write(u32, a_type.rs1, data_rs1 | data_rs2);
+                    },
+                    //AMOMIN.W
+                    0b10000 => {
+                        std.log.info("AMOMIN.W: {any}", .{a_type});
+                        const data_rs1 = @bitCast(i32, try self.read(u32, a_type.rs1));
+                        const data_rs2 = @bitCast(i32, self.regs[a_type.rs2]);
+                        try self.write(u32, a_type.rs1, @bitCast(u32, std.math.min(data_rs1, data_rs2)));
+                    },
+                    //AMOMAX.W
+                    0b10100 => {
+                        std.log.info("AMOMAX.W: {any}", .{a_type});
+                        const data_rs1 = @bitCast(i32, try self.read(u32, a_type.rs1));
+                        const data_rs2 = @bitCast(i32, self.regs[a_type.rs2]);
+                        try self.write(u32, a_type.rs1, @bitCast(u32, std.math.max(data_rs1, data_rs2)));
+                    },
+                    //AMOMINU.W
+                    0b11000 => {
+                        std.log.info("AMOMINU.W: {any}", .{a_type});
+                        const data_rs1 = try self.read(u32, a_type.rs1);
+                        const data_rs2 = self.regs[a_type.rs2];
+                        try self.write(u32, a_type.rs1, std.math.min(data_rs1, data_rs2));
+                    },
+                    //AMOMAXU.W
+                    0b11100 => {
+                        std.log.info("AMOMAXU.W: {any}", .{a_type});
+                        const data_rs1 = try self.read(u32, a_type.rs1);
+                        const data_rs2 = self.regs[a_type.rs2];
+                        try self.write(u32, a_type.rs1, std.math.max(data_rs1, data_rs2));
                     },
                     else => return SocError.InvalidInstruction,
                 }
